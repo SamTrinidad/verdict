@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             ContentTypeSeeder::class,
             ContentSetSeeder::class,
             ContentItemSeeder::class,
+            RatingConfigSeeder::class,
         ]);
     }
 }

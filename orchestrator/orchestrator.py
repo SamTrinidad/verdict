@@ -115,6 +115,11 @@ Once docker-compose.yml exists and the stack is running (`docker compose up -d` 
   MSYS_NO_PATHCONV=1 docker compose exec app composer <args>
   MSYS_NO_PATHCONV=1 docker compose exec node npm <args>
 
+FRONTEND BUILDS: The `node` service runs `npm run dev` (Vite HMR) automatically on `docker compose up`.
+- The entire project directory is bind-mounted in all containers — NEVER use `docker cp` for assets.
+- Svelte/CSS changes are hot-reloaded instantly; no manual rebuild step is needed during development.
+- For a production build only: MSYS_NO_PATHCONV=1 docker compose exec node npm run build
+
 Always prefix docker commands with MSYS_NO_PATHCONV=1 to prevent Git Bash from mangling paths.
 Always use Windows-style absolute paths in -v volume mounts (e.g. "C:/Users/samtr/Projects/verdict:/app")."""
 
@@ -296,7 +301,7 @@ Tasks:
 2. Update package.json to ensure svelte@^5, @sveltejs/vite-plugin-svelte@^5 are present; run npm install
 3. Create resources/js/Layouts/AppLayout.svelte — a base layout with a nav bar slot, main content slot, and a simple responsive shell (no styling framework required; basic CSS is fine)
 4. Update resources/js/app.js to import the layout and confirm Inertia renders a test page
-5. Confirm HMR works inside Docker (add a note in .env.example for VITE_HOST if needed)
+5. Ensure VITE_HOST=localhost is set in .env and .env.example (the `node` compose service handles HMR automatically)
 6. Create a simple resources/js/Pages/Welcome.svelte that uses AppLayout and renders "Verdict" as a heading
 
 Svelte 5 note: use $props() rune for component props, $state() for reactive state, $effect() for side effects.""",

@@ -19,8 +19,8 @@ it('guest sees system and public sets on the index page', function (): void {
         ->assertInertia(
             fn ($page) => $page
                 ->component('ContentSets/Index')
-                ->has('sets.data', 2)
-                ->where('sets.data', fn ($data) => in_array(
+                ->has('contentSets.data', 2)
+                ->where('contentSets.data', fn ($data) => in_array(
                     $system->slug,
                     collect($data)->pluck('slug')->all(),
                     true,
@@ -43,8 +43,8 @@ it('guest cannot see private sets on the index page', function (): void {
         ->assertInertia(
             fn ($page) => $page
                 ->component('ContentSets/Index')
-                ->has('sets.data', 1)
-                ->where('sets.data.0.slug', $system->slug)
+                ->has('contentSets.data', 1)
+                ->where('contentSets.data.0.slug', $system->slug)
         );
 });
 
@@ -63,8 +63,8 @@ it('authenticated user sees system, public, and their own private sets', functio
         ->assertInertia(
             fn ($page) => $page
                 ->component('ContentSets/Index')
-                ->has('sets.data', 3)
-                ->where('sets.data', function ($data) use ($system, $public, $ownPrivate, $otherPrivate): bool {
+                ->has('contentSets.data', 3)
+                ->where('contentSets.data', function ($data) use ($system, $public, $ownPrivate, $otherPrivate): bool {
                     $slugs = collect($data)->pluck('slug')->all();
 
                     return in_array($system->slug, $slugs, true)
@@ -87,7 +87,7 @@ it('authenticated user cannot see another user\'s private sets', function (): vo
         ->assertInertia(
             fn ($page) => $page
                 ->component('ContentSets/Index')
-                ->has('sets.data', 0)
+                ->has('contentSets.data', 0)
         );
 });
 
@@ -102,7 +102,7 @@ it('show page returns the correct set and its items', function (): void {
         ->assertInertia(
             fn ($page) => $page
                 ->component('ContentSets/Show')
-                ->where('set.data.slug', $set->slug)
+                ->where('contentSet.data.slug', $set->slug)
                 ->has('items.data', 3)
         );
 });
@@ -145,7 +145,7 @@ it('owner can access their own private set via the show page', function (): void
         ->assertInertia(
             fn ($page) => $page
                 ->component('ContentSets/Show')
-                ->where('set.data.slug', $set->slug)
+                ->where('contentSet.data.slug', $set->slug)
                 ->has('items.data', 2)
         );
 });

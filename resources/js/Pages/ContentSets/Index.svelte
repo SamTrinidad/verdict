@@ -1,10 +1,10 @@
 <script lang="ts">
     /**
-     * ContentSets/Index — browsable grid of all visible content sets.
+     * ContentSets/Index — browsable grid of all visible content contentSets.
      *
      * Props (injected by ContentSetController@index via Inertia):
      *   contentSets  – paginated ResourceCollection<ContentSetResource>
-     *   auth         – authenticated User object, or null for guests
+     *   auth  – authenticated User object, or null for guests
      */
     import AppLayout from '@/Layouts/AppLayout.svelte';
     import Pagination from '@/Components/Pagination.svelte';
@@ -56,7 +56,7 @@
         <!-- ── Empty state ─────────────────────────────────────────────────── -->
         {#if contentSets.data.length === 0}
             <div class="cs-index__empty">
-                <p>No content sets are available yet.</p>
+                <p>No content contentSets are available yet.</p>
             </div>
 
         {:else}
@@ -79,7 +79,7 @@
 
                         <!-- Title -->
                         <h2 class="cs-card__name">
-                            <a href="/content_sets/{set.slug}" class="cs-card__name-link">
+                            <a href="/content_contentSets/{set.slug}" class="cs-card__name-link">
                                 {set.name}
                             </a>
                         </h2>

@@ -1,11 +1,11 @@
 <script lang="ts">
     /**
-     * ContentSets/Show — detail view for one content set.
+     * ContentSets/Show — detail view for one content contentSet.
      *
      * Props (injected by ContentSetController@show via Inertia):
-     *   contentSet  – single ContentSetResource (with contentType eager-loaded)
-     *   items       – paginated ResourceCollection<ContentItemResource>
-     *   auth        – authenticated User object, or null for guests
+     *   contentSet    – single ContentSetResource (with contentType eager-loaded)
+     *   items  – paginated ResourceCollection<ContentItemResource>
+     *   auth   – authenticated User object, or null for guests
      *
      * Rendering of individual items is delegated entirely to <ContentItem>.
      * When image / video support lands, only ContentItem.svelte needs to change.
@@ -48,7 +48,7 @@
         <!-- ── Set header ──────────────────────────────────────────────────── -->
         <header class="cs-show__header">
             <nav class="cs-show__breadcrumb" aria-label="Breadcrumb">
-                <a href="/content_sets">Content Sets</a>
+                <a href="/content_contentSets">Content Sets</a>
                 <span aria-hidden="true"> / </span>
                 <span aria-current="page">{contentSet.name}</span>
             </nav>
@@ -78,11 +78,11 @@
 
             <!-- CTA — stub href for Phase 3 session creation -->
             <a
-                href="/sessions/create?content_set={contentSet.slug}"
+                href="/sessions/create?content_contentSet={contentSet.slug}"
                 class="btn btn--primary"
                 aria-label="Use {contentSet.name} in a new rating session"
             >
-                Use this set
+                Use this contentSet
             </a>
         </header>
 
@@ -90,14 +90,14 @@
 
         <!-- ── Items list ──────────────────────────────────────────────────── -->
         {#if items.data.length === 0}
-            <p class="cs-show__empty">This set has no items yet.</p>
+            <p class="cs-show__empty">This contentSet has no items yet.</p>
         {:else}
             <ul class="cs-show__items" role="list">
                 {#each items.data as item (item.id)}
                     <li>
                         <!--
                             ContentItem is the single owner of per-type rendering.
-                            contentTypeSlug flows down from the set so the component
+                            contentTypeSlug flows down from the contentSet so the component
                             can branch without knowing its parent.
                         -->
                         <ContentItem {item} {contentTypeSlug} />
