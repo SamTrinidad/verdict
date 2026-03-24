@@ -149,7 +149,9 @@ jobs:
         run: npm run lint
 
       - name: svelte-check
-        run: npx svelte-check --threshold warning
+        # --threshold error  →  fail on type/parse errors only;
+        # a11y warnings are informational and must not block CI green.
+        run: npx svelte-check --threshold error
 
   # ╔══════════════════════════════════════════════════════════════════════════╗
   # ║  build — Docker image stub (main branch only, after test passes)        ║

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ContentSetController;
 use App\Http\Controllers\GuestController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -14,6 +15,9 @@ Route::get('/', function () {
 // ─── Guest identity ───────────────────────────────────────────────────────────
 // Open endpoint — no auth required. Issues a UUID token + HttpOnly cookie.
 Route::post('/guest/enter', [GuestController::class, 'enter'])->name('guest.enter');
+
+// ─── Content sets (index + show, visible to guests and authenticated users) ───
+Route::resource('content_sets', ContentSetController::class)->only(['index', 'show']);
 
 // ─── Breeze authentication routes (login, register, password reset, logout) ───
 require __DIR__.'/auth.php';

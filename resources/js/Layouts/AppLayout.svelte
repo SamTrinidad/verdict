@@ -24,6 +24,7 @@
 
             <ul class="navbar__links" role="list">
                 <li><a href="/">Home</a></li>
+                <li><a href="/content_sets">Content Sets</a></li>
             </ul>
         </nav>
     </header>

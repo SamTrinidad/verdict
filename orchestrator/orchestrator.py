@@ -10,6 +10,7 @@ Usage:
 """
 
 import anyio
+import anyio.abc
 import asyncio
 import argparse
 import io
@@ -35,6 +36,9 @@ _RATE_LIMIT_KEYWORDS = ("rate limit", "ratelimit", "429", "quota", "overloaded",
 
 # How long to wait between retries if no reset time is available (seconds)
 _RETRY_WAITS = [300, 900, 1800]  # 5 min, 15 min, 30 min
+
+# Set to True by --sequential flag; phases use run_parallel() which respects this
+SEQUENTIAL = False
 
 # ---------------------------------------------------------------------------
 # Config
@@ -134,29 +138,25 @@ async def run_agent(track: str, phase: int, prompt: str, tools: list[str], max_r
     for attempt in range(1, max_retries + 1):
         lines: list[str] = []
         result_text = ""
-        rate_limited = False
+        rate_limit_wait: float | None = None
 
         try:
             async for message in query(prompt=prompt, options=options):
                 if isinstance(message, RateLimitEvent):
-                    # SDK surfaced a rate-limit event mid-stream
-                    rate_limited = True
+                    # Record the wait needed but do NOT sleep or break inside the generator —
+                    # breaking while anyio's internal task group is live causes cancel-scope errors.
                     info = getattr(message, "rate_limit_info", None) or getattr(message, "info", None)
                     reset_at = getattr(info, "reset_at", None) if info else None
                     if reset_at:
-                        # reset_at may be a datetime or ISO string
                         if isinstance(reset_at, str):
-                            from datetime import datetime as _dt
-                            reset_dt = _dt.fromisoformat(reset_at.replace("Z", "+00:00"))
+                            reset_dt = datetime.fromisoformat(reset_at.replace("Z", "+00:00"))
                         else:
                             reset_dt = reset_at
-                        wait = max(10, (reset_dt - datetime.now(timezone.utc)).total_seconds() + 30)
-                        print(f"\n[{track}] Rate limit hit. Quota resets at {reset_at}. Waiting {wait:.0f}s (attempt {attempt}/{max_retries})...")
+                        rate_limit_wait = max(10, (reset_dt - datetime.now(timezone.utc)).total_seconds() + 30)
+                        print(f"\n[{track}] Rate limit — resets at {reset_at} ({rate_limit_wait:.0f}s). Will retry after stream ends.")
                     else:
-                        wait = _RETRY_WAITS[min(attempt - 1, len(_RETRY_WAITS) - 1)]
-                        print(f"\n[{track}] Rate limit hit. Waiting {wait:.0f}s (attempt {attempt}/{max_retries})...")
-                    await asyncio.sleep(wait)
-                    break  # restart the query loop from the top
+                        rate_limit_wait = _RETRY_WAITS[min(attempt - 1, len(_RETRY_WAITS) - 1)]
+                        print(f"\n[{track}] Rate limit — waiting {rate_limit_wait:.0f}s after stream ends (attempt {attempt}/{max_retries}).")
 
                 elif isinstance(message, ResultMessage):
                     result_text = message.result
@@ -181,30 +181,53 @@ async def run_agent(track: str, phase: int, prompt: str, tools: list[str], max_r
 
         except Exception as exc:
             if _is_rate_limit_error(exc) and attempt < max_retries:
-                wait = _parse_reset_seconds(exc) or _RETRY_WAITS[min(attempt - 1, len(_RETRY_WAITS) - 1)]
-                print(f"\n[{track}] Rate limit error: {exc!s:.120}. Waiting {wait}s (attempt {attempt}/{max_retries})...")
-                await asyncio.sleep(wait)
-                continue
-            # Non-rate-limit error or final attempt — re-raise
-            if lines:
-                log_file.write_text("\n".join(lines), encoding="utf-8")
-            raise
+                rate_limit_wait = _parse_reset_seconds(exc) or _RETRY_WAITS[min(attempt - 1, len(_RETRY_WAITS) - 1)]
+                print(f"\n[{track}] Rate limit exception. Waiting {rate_limit_wait}s (attempt {attempt}/{max_retries})...")
+            else:
+                if lines:
+                    log_file.write_text("\n".join(lines), encoding="utf-8")
+                raise
 
-        if rate_limited:
+        # Generator is fully consumed — safe to sleep and retry now
+        if rate_limit_wait is not None:
             if attempt >= max_retries:
-                raise RuntimeError(f"[{track}] Rate limited {max_retries} times. Giving up.")
-            continue  # retry
+                # Exhausted retries — log and return empty rather than crashing the task group.
+                # Work already written to disk by earlier successful attempts is preserved.
+                print(f"\n[{track}] WARNING: rate limited on all {max_retries} attempts. Skipping remaining work for this track.")
+                if lines:
+                    log_file.write_text("\n".join(lines), encoding="utf-8")
+                return ""
+            await anyio.sleep(rate_limit_wait)
+            rate_limit_wait = None
+            continue
 
-        # Success — write log and return
+        # Success
         log_file.write_text("\n".join(lines), encoding="utf-8")
         return result_text
 
     return ""  # unreachable, satisfies type checker
 
 
-async def run_parallel(*tasks) -> list[str]:
-    """Run multiple agent tasks concurrently."""
-    return list(await asyncio.gather(*tasks))
+async def run_parallel(*coros) -> list[str]:
+    """Run agent coroutines sequentially (default, rate-limit-safe) or concurrently (--parallel).
+
+    Sequential mode avoids all agents hammering the API quota simultaneously,
+    which causes cascading rate-limit retries. Use --parallel only with API keys
+    or Max plans where parallelism is practical.
+    """
+    if SEQUENTIAL:
+        return [await coro for coro in coros]
+
+    results: list[str] = [""] * len(coros)
+
+    async def _run(i: int, coro) -> None:
+        results[i] = await coro
+
+    async with anyio.create_task_group() as tg:
+        for i, coro in enumerate(coros):
+            tg.start_soon(_run, i, coro)
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -869,11 +892,18 @@ def parse_args():
     parser.add_argument("--from-phase", type=int, choices=PHASES.keys(), help="Run from this phase through phase 6")
     parser.add_argument("--mark-gate", type=str, help="Mark a gate as passed (e.g. 0, 1, 2, 5-mini)")
     parser.add_argument("--status", action="store_true", help="Show current gate status")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--sequential", action="store_true", default=True,
+                      help="Run tracks one at a time (default — rate-limit safe for Pro)")
+    mode.add_argument("--parallel", action="store_true", default=False,
+                      help="Run tracks concurrently (faster, but hits Pro rate limits)")
     return parser.parse_args()
 
 
 async def main():
+    global SEQUENTIAL
     args = parse_args()
+    SEQUENTIAL = not args.parallel
 
     if args.status:
         print("Gate status:")

@@ -13,6 +13,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // CSRF exemptions — open endpoints called before a session/cookie exists.
+        $middleware->validateCsrfTokens(except: [
+            'guest/enter',
+        ]);
+
         // Hybrid guest + account identity resolution (Phase 1)
         $middleware->alias([
             'participant.identity' => EnsureParticipantIdentity::class,
