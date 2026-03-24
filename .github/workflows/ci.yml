@@ -1,0 +1,188 @@
+name: CI
+
+# ── Triggers ────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# ── Jobs ─────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  test — PHP 8.4 · MySQL 8.0 · Redis 7                                  ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+  test:
+    name: Tests (PHP 8.4)
+    runs-on: ubuntu-latest
+
+    # ── Service containers ───────────────────────────────────────────────────
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: verdict_ci
+          MYSQL_DATABASE: verdict_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    # ── Job-level env (override .env values; phpunit.xml re-overrides for Pest)
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: verdict_test
+      DB_USERNAME: root
+      DB_PASSWORD: verdict_ci
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # PHP ──────────────────────────────────────────────────────────────────
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: >-
+            dom, curl, libxml, mbstring, zip, pcntl,
+            pdo, sqlite, pdo_sqlite, pdo_mysql,
+            bcmath, intl, exif, iconv, redis
+          coverage: none
+
+      # Composer cache — keyed on composer.lock hash ────────────────────────
+      - name: Cache vendor/
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress
+
+      # Env & key ────────────────────────────────────────────────────────────
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      # Migrations run against the MySQL service ────────────────────────────
+      - name: Run database migrations (MySQL)
+        run: php artisan migrate --force
+
+      # Pest — phpunit.xml forces DB_CONNECTION=sqlite for fast in-memory tests
+      - name: Run Pest test suite
+        run: vendor/bin/pest --ci
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  lint — Pint · ESLint · svelte-check  (parallel with test)             ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── PHP (Pint) ─────────────────────────────────────────────────────────
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Cache vendor/
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress
+
+      - name: PHP code style — Pint (check only)
+        run: vendor/bin/pint --test
+
+      # ── Node.js (ESLint + svelte-check) ────────────────────────────────────
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # npm cache — keyed on package-lock.json hash ─────────────────────────
+      - name: Cache node_modules/
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: svelte-check
+        run: npx svelte-check --threshold warning
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  build — Docker image stub (main branch only, after test passes)        ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+  build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image (stub)
+        run: |
+          echo "==> [stub] docker build -t verdict:${{ github.sha }} ."
+          echo "     Replace with a real docker build once Dockerfile is ready."
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  deploy — SSH deploy stub (main branch only, after build passes)        ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+  deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Deploy to production (stub)
+        run: |
+          echo "==> [stub] ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          echo "     docker pull verdict:${{ github.sha }} && docker compose up -d"
+          echo "     Replace with a real SSH deploy once infrastructure is ready."
+          echo "     Required secrets: DEPLOY_SSH_KEY, DEPLOY_HOST, DEPLOY_USER"
